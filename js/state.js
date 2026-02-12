@@ -1,6 +1,7 @@
 // js/state.js
 import { StorageSystem } from './storage.js';
 
+// 1. KHỞI TẠO STATE
 let currentState = StorageSystem.load() || {
     gems: 1000,
     inventory: [],
@@ -10,14 +11,14 @@ let currentState = StorageSystem.load() || {
     lastLogin: Date.now()
 };
 
-// Tự động sửa lỗi dữ liệu cũ (nếu thiếu mảng)
+// Tự động vá lỗi dữ liệu cũ (nếu thiếu mảng)
 ['inventory', 'supportInventory', 'team'].forEach(key => {
     if (!Array.isArray(currentState[key])) currentState[key] = [];
 });
 
 export function getState() { return currentState; }
 
-// --- HÀM GENERIC: Thêm vật phẩm vào mảng bất kỳ ---
+// --- 2. HÀM GENERIC: Thêm vật phẩm ---
 function addItemToState(arrayName, itemData) {
     const newItem = {
         ...itemData,
@@ -32,17 +33,22 @@ function addItemToState(arrayName, itemData) {
     return newItem;
 }
 
-// Wrapper function để code bên ngoài dễ hiểu hơn
 export function addHeroToInventory(hero) { return addItemToState('inventory', hero); }
 export function addSupportToInventory(item) { return addItemToState('supportInventory', item); }
 
-// --- QUẢN LÝ TÀI NGUYÊN ---
+// --- 3. QUẢN LÝ TÀI NGUYÊN (ADMIN CẦN CÁI NÀY) ---
 export function updateGems(amount) {
     currentState.gems += amount;
     StorageSystem.save(currentState);
 }
 
-// --- QUẢN LÝ TRANG BỊ ---
+// [FIX] Bổ sung hàm setGemsDirectly cho Admin Tool
+export function setGemsDirectly(amount) {
+    currentState.gems = amount;
+    StorageSystem.save(currentState);
+}
+
+// --- 4. QUẢN LÝ TRANG BỊ ---
 export function equipSupportItem(heroUid, supportUid) {
     const hero = currentState.inventory.find(h => h.uid === heroUid);
     const item = currentState.supportInventory.find(s => s.uid === supportUid);
@@ -72,7 +78,7 @@ export function unequipSupportItem(heroUid) {
     return true;
 }
 
-// --- CÁC HÀM KHÁC (Giữ nguyên logic đặc thù) ---
+// --- 5. CÁC HÀM KHÁC ---
 export function toggleTeamMember(uid) {
     const idx = currentState.team.indexOf(uid);
     if (idx > -1) currentState.team.splice(idx, 1);
@@ -119,6 +125,16 @@ export function upgradeHeroStarBulk(targetUid, materialUids) {
     StorageSystem.save(currentState);
     
     return { success: true, count: mUids.length, newStar: hero.star, oldHP, newHP: hero.hp, oldATK, newATK: hero.atk };
+}
+
+export function evolveHero(uid) { return true; }
+
+// [FIX] Bổ sung hàm clearInventory cho Admin Tool
+export function clearInventory() {
+    currentState.inventory = [];
+    currentState.supportInventory = [];
+    currentState.team = [];
+    StorageSystem.save(currentState);
 }
 
 export function advanceStage(type) {

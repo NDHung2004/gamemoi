@@ -1,4 +1,4 @@
-import { getState, setGemsDirectly, clearInventory, updateGems } from './state.js';
+import { getState, setGemsDirectly, clearInventory, updateGems, addHeroToInventory, addSupportToInventory } from './state.js';
 import { StorageSystem } from './storage.js';
 import { updateHeader, renderInventory } from './ui.js';
 // Import đủ cả Tướng và Ải
