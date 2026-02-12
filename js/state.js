@@ -1,298 +1,128 @@
 // js/state.js
 import { StorageSystem } from './storage.js';
 
-export const MAX_INVENTORY = 500;
-
-// 1. Khởi tạo trạng thái ban đầu
-const DEFAULT_STATE = {
+let currentState = StorageSystem.load() || {
     gems: 1000,
     inventory: [],
-    history: [],
-    progress: {
-        campaignStage: 1,
-        towerFloor: 1
-    },
+    supportInventory: [],
+    progress: { campaignStage: 1, towerFloor: 1 },
     team: [],
-    createdAt: new Date().toISOString()
+    lastLogin: Date.now()
 };
 
-// 2. Load dữ liệu và tự động sửa lỗi (Migration)
-let currentState = StorageSystem.load();
+// Tự động sửa lỗi dữ liệu cũ (nếu thiếu mảng)
+['inventory', 'supportInventory', 'team'].forEach(key => {
+    if (!Array.isArray(currentState[key])) currentState[key] = [];
+});
 
-// Kiểm tra và tự động thêm dữ liệu còn thiếu
-if (!currentState.progress) {
-    currentState.progress = { ...DEFAULT_STATE.progress };
-}
-if (!currentState.team) {
-    currentState.team = [];
-}
-StorageSystem.save(currentState);
+export function getState() { return currentState; }
 
-// 3. Các hàm Export
-export function getState() {
-    return currentState;
+// --- HÀM GENERIC: Thêm vật phẩm vào mảng bất kỳ ---
+function addItemToState(arrayName, itemData) {
+    const newItem = {
+        ...itemData,
+        uid: Date.now() + Math.random(), // Tạo ID duy nhất
+        isEquipped: false,
+        equippedTo: null,
+        // Chỉ tướng mới có level/star, trang bị thì không cần reset
+        ...(arrayName === 'inventory' ? { level: 1, star: 0 } : {})
+    };
+    currentState[arrayName].push(newItem);
+    StorageSystem.save(currentState);
+    return newItem;
 }
 
+// Wrapper function để code bên ngoài dễ hiểu hơn
+export function addHeroToInventory(hero) { return addItemToState('inventory', hero); }
+export function addSupportToInventory(item) { return addItemToState('supportInventory', item); }
+
+// --- QUẢN LÝ TÀI NGUYÊN ---
 export function updateGems(amount) {
     currentState.gems += amount;
     StorageSystem.save(currentState);
 }
 
-export function advanceStage(type) {
-    if (type === 'campaign') currentState.progress.campaignStage++;
-    if (type === 'tower') currentState.progress.towerFloor++;
-    StorageSystem.save(currentState);
-}
+// --- QUẢN LÝ TRANG BỊ ---
+export function equipSupportItem(heroUid, supportUid) {
+    const hero = currentState.inventory.find(h => h.uid === heroUid);
+    const item = currentState.supportInventory.find(s => s.uid === supportUid);
+    if (!hero || !item) return false;
 
-export function toggleTeamMember(heroUid) {
-    // Ép kiểu UID về số để tránh lỗi so sánh giữa string và number
-    const uid = Number(heroUid); 
-    const index = currentState.team.indexOf(uid);
-    
-    if (index > -1) {
-        // Nếu đã có thì xóa (Hủy chọn)
-        currentState.team.splice(index, 1);
-        console.log("Đã bỏ chọn tướng:", uid);
-    } else {
-        // Kiểm tra xem tướng có tồn tại trong túi đồ không trước khi thêm
-        const exists = currentState.inventory.some(h => h.uid === uid);
-        if (!exists) {
-            console.error("Tướng không tồn tại trong túi đồ!");
-            return false;
-        }
+    if (hero.equippedItemUid) unequipSupportItem(hero.uid); // Tháo đồ cũ
+    if (item.isEquipped && item.equippedTo) unequipSupportItem(item.equippedTo); // Gỡ khỏi người cũ
 
-        // Nếu chưa có thì thêm vào (nhưng không quá 5)
-        if (currentState.team.length >= 5) {
-            alert("Đội hình chỉ tối đa 5 tướng!");
-            return false;
-        }
-        currentState.team.push(uid);
-        console.log("Đã chọn tướng vào đội hình:", uid);
-    }
-    
-    StorageSystem.save(currentState);
-    return true; 
-}
-
-export function addHeroToInventory(hero) {
-    if (currentState.inventory.length >= MAX_INVENTORY) return false;
-
-    const heroData = { 
-        ...hero, 
-        level: hero.level || 1, // Đảm bảo có level
-        star: hero.star || 0,   // Đảm bảo có sao
-        obtainedAt: new Date().toISOString(),
-        uid: Date.now() + Math.random()
-    };
-    currentState.inventory.push(heroData);
-    currentState.history.unshift(`Nhận [${hero.rank}] ${hero.name}`);
-    if(currentState.history.length > 50) currentState.history.pop();
-
+    hero.equippedItemUid = supportUid;
+    item.isEquipped = true;
+    item.equippedTo = heroUid;
     StorageSystem.save(currentState);
     return true;
 }
 
-// --- LOGIC NÂNG CẤP & TIẾN HÓA ---
+export function unequipSupportItem(heroUid) {
+    const hero = currentState.inventory.find(h => h.uid === heroUid);
+    if (!hero || !hero.equippedItemUid) return false;
 
-// js/state.js
-
-export function upgradeHeroLevel(heroUid) {
-    // 1. Ép kiểu về Number để so sánh chính xác tuyệt đối
-    const targetUid = Number(heroUid);
-    
-    // 2. Tìm chính xác thẻ dựa trên UID duy nhất
-    const hero = currentState.inventory.find(h => Number(h.uid) === targetUid);
-
-    if (!hero) {
-        console.error("Không tìm thấy tướng để nâng cấp!");
-        return false;
+    const item = currentState.supportInventory.find(s => s.uid === hero.equippedItemUid);
+    if (item) {
+        item.isEquipped = false;
+        item.equippedTo = null;
     }
+    hero.equippedItemUid = null;
+    StorageSystem.save(currentState);
+    return true;
+}
 
-    const cost = (hero.level || 1) * 100;
-    if (currentState.gems < cost) {
-        alert("Không đủ Kim cương!");
-        return false;
+// --- CÁC HÀM KHÁC (Giữ nguyên logic đặc thù) ---
+export function toggleTeamMember(uid) {
+    const idx = currentState.team.indexOf(uid);
+    if (idx > -1) currentState.team.splice(idx, 1);
+    else {
+        if (currentState.team.length >= 5) return alert("Đội hình tối đa 5 tướng!");
+        currentState.team.push(uid);
     }
+    StorageSystem.save(currentState);
+}
 
-    updateGems(-cost);
-    hero.level = (hero.level || 1) + 1;
-    
-    // Tăng chỉ số dựa trên chỉ số hiện tại của CHÍNH thẻ đó
+export function removeHeroFromInventory(uid) {
+    if (currentState.team.includes(Number(uid))) return { success: false, message: "Tướng đang trong đội hình!" };
+    currentState.inventory = currentState.inventory.filter(h => Number(h.uid) !== Number(uid));
+    updateGems(10);
+    StorageSystem.save(currentState);
+    return { success: true };
+}
+
+export function upgradeHeroLevel(uid) {
+    const hero = currentState.inventory.find(h => Number(h.uid) === Number(uid));
+    if (currentState.gems < 100) return alert("Thiếu 100 Gem để nâng cấp!");
+    hero.level++;
     hero.hp = Math.floor(hero.hp * 1.1);
     hero.atk = Math.floor(hero.atk * 1.1);
-    
+    updateGems(-100);
     StorageSystem.save(currentState);
     return true;
 }
-
-// js/state.js
-
-// js/state.js
-export function upgradeHeroStarWithMaterial(targetUid, materialUid) {
-    const tUid = Number(targetUid);
-    const mUid = Number(materialUid);
-
-    // 1. Tìm thẻ chính và thẻ nguyên liệu
-    const hero = currentState.inventory.find(h => Number(h.uid) === tUid);
-    const material = currentState.inventory.find(h => Number(h.uid) === mUid);
-
-    if (!hero || !material) {
-        alert("Lỗi: Không tìm thấy thẻ tướng hoặc nguyên liệu!");
-        return false;
-    }
-
-    if (hero.star >= 10) {
-        alert("Tướng đã đạt tối đa 10 sao!");
-        return false;
-    }
-
-    // 2. Xóa thẻ nguyên liệu khỏi túi đồ
-    currentState.inventory = currentState.inventory.filter(h => Number(h.uid) !== mUid);
-
-    // 3. Nâng sao và tăng chỉ số cho thẻ chính
-    hero.star = (hero.star || 0) + 1;
-    hero.hp = Math.floor(hero.hp * 1.5);
-    hero.atk = Math.floor(hero.atk * 1.5);
-
-    StorageSystem.save(currentState);
-    return true;
-}
-export function upgradeHeroStar(heroUid) {
-    const targetUid = Number(heroUid);
-    const hero = currentState.inventory.find(h => Number(h.uid) === targetUid);
-    
-    if (!hero) return false;
-
-    // CHẶN NẾU ĐÃ ĐẠT 10 SAO
-    if ((hero.star || 0) >= 10) {
-        alert("Tướng đã đạt tối đa 10 sao!");
-        return false;
-    }
-
-    const duplicateIndex = currentState.inventory.findIndex(h => 
-        h.id === hero.id && Number(h.uid) !== targetUid
-    );
-
-    if (duplicateIndex === -1) {
-        alert("Cần thêm 1 thẻ cùng loại để nâng sao!");
-        return false;
-    }
-
-    // Thực hiện nâng sao
-    currentState.inventory.splice(duplicateIndex, 1);
-    hero.star = (hero.star || 0) + 1;
-    
-    // Tăng chỉ số mạnh mẽ hơn
-    hero.hp = Math.floor(hero.hp * 1.5);
-    hero.atk = Math.floor(hero.atk * 1.5);
-
-    StorageSystem.save(currentState);
-    return true;
-}
-// js/state.js
-
-// js/state.js
 
 export function upgradeHeroStarBulk(targetUid, materialUids) {
-    const hero = currentState.inventory.find(h => Number(h.uid) === Number(targetUid));
-    if (!hero || hero.star >= 10) return { success: false, message: "Lỗi dữ liệu hoặc đã Max sao!" };
-
-    // 1. Lưu lại chỉ số CŨ để làm báo cáo
-    const oldHP = hero.hp;
-    const oldATK = hero.atk;
-    const oldStar = hero.star;
-
-    // 2. Xử lý nguyên liệu
+    const hero = currentState.inventory.find(h => h.uid === targetUid);
     const mUids = materialUids.map(Number);
-    const canAdd = Math.min(mUids.length, 10 - hero.star);
-    const actualMaterials = mUids.slice(0, canAdd);
-
-    // Xóa nguyên liệu khỏi túi
-    currentState.inventory = currentState.inventory.filter(h => !actualMaterials.includes(Number(h.uid)));
-
-    // 3. TÍNH TOÁN CHỈ SỐ MỚI (Mỗi sao tăng 1.5 lần)
-    actualMaterials.forEach(() => {
+    const oldHP = hero.hp; const oldATK = hero.atk; const oldStar = hero.star;
+    
+    // Xóa nguyên liệu
+    currentState.inventory = currentState.inventory.filter(h => !mUids.includes(Number(h.uid)));
+    
+    // Tăng chỉ số
+    mUids.forEach(() => {
         hero.star++;
         hero.hp = Math.floor(hero.hp * 1.5);
         hero.atk = Math.floor(hero.atk * 1.5);
     });
-
-    StorageSystem.save(currentState);
-
-    // 4. TRẢ VỀ DỮ LIỆU ĐỂ HIỂN THỊ THÔNG BÁO
-    return { 
-        success: true, 
-        count: actualMaterials.length, // Số sao đã tăng
-        newStar: hero.star,
-        oldHP: oldHP,
-        newHP: hero.hp,
-        oldATK: oldATK,
-        newATK: hero.atk
-    };
-}
-export function evolveHero(heroUid) {
-    const hero = currentState.inventory.find(h => h.uid === heroUid);
-    if ((hero.star || 0) < 5) {
-        alert("Cần đạt 5 sao để tiến hóa!");
-        return false;
-    }
-
-    const EVOLVE_COST = 5000;
-    if (currentState.gems < EVOLVE_COST) {
-        alert("Không đủ 5000 Kim cương!");
-        return false;
-    }
-
-    const RANK_UP = { "R": "SR", "SR": "SSR", "SSR": "UR", "UR": "GOD" };
-    const nextRank = RANK_UP[hero.rank];
-
-    if (!nextRank) {
-        alert("Tướng đã đạt phẩm cấp tối đa!");
-        return false;
-    }
-
-    updateGems(-EVOLVE_COST);
-    hero.rank = nextRank;
-    hero.star = 0;
-    hero.level = 1;
-    hero.hp *= 2;
-    hero.atk *= 2;
-    
-    currentState.history.unshift(`✨ TIẾN HÓA: ${hero.name} -> [${nextRank}]`);
-    StorageSystem.save(currentState);
-    return true;
-}
-
-export function clearInventory() {
-    currentState.inventory = [];
-    currentState.team = [];
-    StorageSystem.save(currentState);
-}
-
-export function setGemsDirectly(value) {
-    currentState.gems = value;
-    StorageSystem.save(currentState);
-}
-// js/state.js
-
-// Đảm bảo có từ khóa 'export' ở đầu hàm
-// js/state.js
-
-export function removeHeroFromInventory(uid) {
-    // Kiểm tra xem tướng có đang trong đội hình (team) không
-    if (currentState.team.includes(Number(uid))) {
-        // Trả về False để UI biết đường báo lỗi
-        return { success: false, message: "Tướng đang ra trận!" }; 
-    }
-
-    // Nếu không trong đội, tiến hành xóa
-    currentState.inventory = currentState.inventory.filter(h => Number(h.uid) !== Number(uid));
-    
-    // Cộng tiền
-    updateGems(10);
-    
-    // Lưu lại
     StorageSystem.save(currentState);
     
-    return { success: true };
+    return { success: true, count: mUids.length, newStar: hero.star, oldHP, newHP: hero.hp, oldATK, newATK: hero.atk };
+}
+
+export function advanceStage(type) {
+    if (type === 'campaign') currentState.progress.campaignStage++;
+    else currentState.progress.towerFloor++;
+    StorageSystem.save(currentState);
 }
