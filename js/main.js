@@ -5,15 +5,14 @@ import {
     renderGachaScreen, 
     renderInventory, 
     showGachaResults, 
-    updateHeader 
+    updateHeader,renderEquipmentBag
 } from './ui.js';
-import { getState, addHeroToInventory, updateGems } from './state.js';
-import { getHeroDB } from './database.js';
+
+// Import logic quay riêng biệt
+import { pullHeroGacha, pullEquipGacha } from './gacha.js'; 
 
 // --- 1. KHỞI TẠO ỨNG DỤNG ---
-// Cập nhật hiển thị Kim cương ban đầu
 updateHeader(); 
-// Mặc định hiển thị trang chủ khi vừa tải trang
 renderHome();
 
 // --- 2. QUẢN LÝ ĐIỀU HƯỚNG (NAVIGATION) ---
@@ -28,45 +27,42 @@ document.getElementById('btn-battle').onclick = () => {
     renderBattleMap();
 };
 
-// Nút Triệu Hồi (Gacha)
-document.getElementById('btn-gacha').onclick = () => {
-    renderGachaScreen((num) => {
-        const state = getState();
-        const cost = num * 160;
-
-        // Kiểm tra tài nguyên trước khi quay
-        if (state.gems < cost) {
-            alert("Bạn không đủ Kim cương để thực hiện triệu hồi!");
-            return;
-        }
-
-        // Trừ tiền và lấy dữ liệu tướng từ Database
-        updateGems(-cost);
-        const heroDB = getHeroDB();
-        const results = [];
-
-        for (let i = 0; i < num; i++) {
-            // Random tướng từ kho dữ liệu gốc
-            const randomHero = heroDB[Math.floor(Math.random() * heroDB.length)];
-            // Thêm vào túi đồ cá nhân (tự tạo UID duy nhất)
-            addHeroToInventory(randomHero);
-            results.push(randomHero);
-        }
-
-        // Hiển thị kết quả (có hiệu ứng nếu là SSR trở lên)
-        showGachaResults(results);
-        updateHeader();
-    });
-};
-
-// Nút Túi Tướng (Kho tàng 500 thẻ)
+// Nút Túi Tướng
 document.getElementById('btn-inventory').onclick = () => {
     renderInventory();
 };
 
-/**
- * LƯU Ý: 
- * Các chức năng như nâng Cấp, nâng Sao, và chọn Đội hình 
- * được xử lý thông qua sự kiện click vào Card trong ui.js 
- * và gọi trực tiếp các hàm từ window.
- */
+// --- 3. KẾT NỐI GACHA (QUAN TRỌNG) ---
+
+// Nút Triệu Hồi (Gacha)
+document.getElementById('btn-gacha').onclick = () => {
+    // Truyền 2 hàm callback riêng biệt cho UI: 
+    // 1. Hàm quay Tướng
+    // 2. Hàm quay Trang bị
+    renderGachaScreen(
+        (times) => { // Callback khi bấm nút quay bên tab Tướng
+            const result = pullHeroGacha(times);
+            handleGachaResult(result);
+        },
+        (times) => { // Callback khi bấm nút quay bên tab Trang bị
+            const result = pullEquipGacha(times);
+            handleGachaResult(result);
+        }
+    );
+};
+
+// Hàm xử lý kết quả chung sau khi quay
+function handleGachaResult(result) {
+    if (result.success) {
+        // Cập nhật số Gem trên Header
+        updateHeader();
+        // Hiển thị danh sách kết quả (Tướng hoặc Trang bị)
+        showGachaResults(result.results);
+    } else {
+        // Báo lỗi (VD: Không đủ tiền, đầy túi)
+        alert(result.message);
+    }
+}
+document.getElementById('btn-equip-bag').onclick = () => {
+    renderEquipmentBag();
+};

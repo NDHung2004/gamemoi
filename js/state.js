@@ -7,6 +7,7 @@ export const MAX_INVENTORY = 500;
 const DEFAULT_STATE = {
     gems: 1000,
     inventory: [],
+    equipmentBag: [],
     history: [],
     progress: {
         campaignStage: 1,
@@ -18,7 +19,7 @@ const DEFAULT_STATE = {
 
 // 2. Load dữ liệu và tự động sửa lỗi (Migration)
 let currentState = StorageSystem.load();
-
+if (!currentState.equipmentBag) currentState.equipmentBag = [];
 // Kiểm tra và tự động thêm dữ liệu còn thiếu
 if (!currentState.progress) {
     currentState.progress = { ...DEFAULT_STATE.progress };
@@ -45,29 +46,20 @@ export function advanceStage(type) {
 }
 
 export function toggleTeamMember(heroUid) {
-    // Ép kiểu UID về số để tránh lỗi so sánh giữa string và number
     const uid = Number(heroUid); 
     const index = currentState.team.indexOf(uid);
     
     if (index > -1) {
-        // Nếu đã có thì xóa (Hủy chọn)
         currentState.team.splice(index, 1);
-        console.log("Đã bỏ chọn tướng:", uid);
     } else {
-        // Kiểm tra xem tướng có tồn tại trong túi đồ không trước khi thêm
-        const exists = currentState.inventory.some(h => h.uid === uid);
-        if (!exists) {
-            console.error("Tướng không tồn tại trong túi đồ!");
-            return false;
-        }
+        const exists = currentState.inventory.some(h => Number(h.uid) === uid);
+        if (!exists) return false;
 
-        // Nếu chưa có thì thêm vào (nhưng không quá 5)
         if (currentState.team.length >= 5) {
             alert("Đội hình chỉ tối đa 5 tướng!");
             return false;
         }
         currentState.team.push(uid);
-        console.log("Đã chọn tướng vào đội hình:", uid);
     }
     
     StorageSystem.save(currentState);
@@ -79,10 +71,12 @@ export function addHeroToInventory(hero) {
 
     const heroData = { 
         ...hero, 
-        level: hero.level || 1, // Đảm bảo có level
-        star: hero.star || 0,   // Đảm bảo có sao
+        level: hero.level || 1, 
+        star: hero.star || 0,
         obtainedAt: new Date().toISOString(),
-        uid: Date.now() + Math.random()
+        uid: Date.now() + Math.random(),
+        // MỚI: Khởi tạo slot trang bị trống
+        equipped: { weapon: null, armor: null, boots: null }
     };
     currentState.inventory.push(heroData);
     currentState.history.unshift(`Nhận [${hero.rank}] ${hero.name}`);
@@ -97,16 +91,9 @@ export function addHeroToInventory(hero) {
 // js/state.js
 
 export function upgradeHeroLevel(heroUid) {
-    // 1. Ép kiểu về Number để so sánh chính xác tuyệt đối
     const targetUid = Number(heroUid);
-    
-    // 2. Tìm chính xác thẻ dựa trên UID duy nhất
     const hero = currentState.inventory.find(h => Number(h.uid) === targetUid);
-
-    if (!hero) {
-        console.error("Không tìm thấy tướng để nâng cấp!");
-        return false;
-    }
+    if (!hero) return false;
 
     const cost = (hero.level || 1) * 100;
     if (currentState.gems < cost) {
@@ -116,8 +103,6 @@ export function upgradeHeroLevel(heroUid) {
 
     updateGems(-cost);
     hero.level = (hero.level || 1) + 1;
-    
-    // Tăng chỉ số dựa trên chỉ số hiện tại của CHÍNH thẻ đó
     hero.hp = Math.floor(hero.hp * 1.1);
     hero.atk = Math.floor(hero.atk * 1.1);
     
@@ -266,6 +251,7 @@ export function evolveHero(heroUid) {
 export function clearInventory() {
     currentState.inventory = [];
     currentState.team = [];
+    currentState.equipmentBag = [];
     StorageSystem.save(currentState);
 }
 
@@ -295,4 +281,132 @@ export function removeHeroFromInventory(uid) {
     StorageSystem.save(currentState);
     
     return { success: true };
+}
+
+// js/state.js
+
+export const MAX_EQUIPMENT_BAG = 200; // Giới hạn túi trang bị
+
+// Hàm xóa trang bị khỏi túi
+// js/state.js
+
+// 1. Logic Xóa trang bị (Giống tướng: +10 Gem, kiểm tra đang mặc)
+export function removeEquipmentFromBag(uid) {
+    const state = getState();
+    const itemUid = Number(uid);
+
+    // Kiểm tra xem có anh hùng nào đang mặc món đồ này không
+    const isEquipped = state.inventory.some(hero => 
+        hero.equipped && Object.values(hero.equipped).some(eq => eq && Number(eq.uid) === itemUid)
+    );
+
+    if (isEquipped) {
+        return { success: false, message: "Trang bị đang được sử dụng, không thể bán!" };
+    }
+
+    // Xóa khỏi túi đồ
+    state.equipmentBag = state.equipmentBag.filter(item => Number(item.uid) !== itemUid);
+    
+    // Cộng 10 Gem giống như bán tướng
+    updateGems(10); 
+    
+    StorageSystem.save(state);
+    return { success: true };
+}
+
+// 2. Logic Nâng cấp Level trang bị
+export function upgradeEquipmentLevel(targetUid) {
+    const state = getState();
+    // Ép kiểu Number để đảm bảo tìm đúng UID duy nhất (Unique ID)
+    const tUid = Number(targetUid);
+    
+    // Tìm chính xác món đồ người dùng đang mở trong Modal
+    const item = state.equipmentBag.find(i => Number(i.uid) === tUid);
+
+    if (!item) {
+        console.error("Không tìm thấy trang bị để nâng cấp!");
+        return false;
+    }
+
+    // Tính toán phí nâng cấp dựa trên Level hiện tại của CHÍNH món đồ đó
+    const cost = (item.level || 1) * 100;
+    
+    if (state.gems < cost) {
+        alert("Không đủ Kim cương!");
+        return false;
+    }
+
+    // Thực hiện trừ tiền và tăng cấp
+    updateGems(-cost);
+    item.level = (item.level || 1) + 1;
+    
+    // Chỉ tăng chỉ số cho món đồ có UID này
+    item.stat = Math.floor(item.stat * 1.1);
+    
+    StorageSystem.save(state);
+    return true;
+}
+
+// 3. Logic Nâng sao gộp (Bulk) cho trang bị (Dùng đồ trùng ID làm phôi)
+// js/state.js
+
+export function upgradeEquipmentStarBulk(targetUid, materialUids) {
+    const state = getState();
+    // Ép kiểu Number để tìm kiếm chính xác
+    const tUid = Number(targetUid);
+    const item = state.equipmentBag.find(i => Number(i.uid) === tUid);
+    
+    if (!item || (item.star || 0) >= 10) {
+        return { success: false, message: "Trang bị không tồn tại hoặc đã đạt tối đa 10 sao!" };
+    }
+
+    // Chuyển mảng UID phôi sang kiểu số
+    const mUids = materialUids.map(Number);
+    
+    // Tính toán số lượng phôi thực tế có thể dùng (tối đa đến 10 sao)
+    const canAdd = Math.min(mUids.length, 10 - (item.star || 0));
+    const actualMaterials = mUids.slice(0, canAdd);
+
+    // QUAN TRỌNG: Loại bỏ các phôi khỏi túi đồ
+    state.equipmentBag = state.equipmentBag.filter(i => !actualMaterials.includes(Number(i.uid)));
+
+    // Tăng sao và chỉ số (Ví dụ: 1.5 lần mỗi sao tương tự tướng)
+    actualMaterials.forEach(() => {
+        item.star = (item.star || 0) + 1;
+        item.stat = Math.floor(item.stat * 1.5); 
+    });
+
+    StorageSystem.save(state); // Lưu trạng thái mới
+    
+    return { 
+        success: true, 
+        newStar: item.star,
+        count: actualMaterials.length 
+    };
+}
+// Hàm nâng sao trang bị (Dùng trang bị cùng ID làm nguyên liệu)
+export function upgradeEquipmentStar(targetUid, materialUid) {
+    const state = getState();
+    const item = state.equipmentBag.find(i => i.uid === targetUid);
+    const material = state.equipmentBag.find(i => i.uid === materialUid);
+
+    if (!item || !material || item.id !== material.id || targetUid === materialUid) {
+        alert("Nguyên liệu không hợp lệ (phải cùng loại)!");
+        return false;
+    }
+
+    if ((item.star || 0) >= 5) {
+        alert("Đã đạt tối đa 5 sao!");
+        return false;
+    }
+
+    // Xóa nguyên liệu
+    state.equipmentBag = state.equipmentBag.filter(i => i.uid !== materialUid);
+    
+    // Tăng sao và chỉ số đột biến
+    item.star = (item.star || 0) + 1;
+    item.stat = Math.floor(item.stat * 1.5); // Tăng 50% chỉ số khi lên sao
+
+    StorageSystem.save(state);
+    return true;
 }

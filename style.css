@@ -134,7 +134,7 @@ nav button:hover { background: #777; }
 /* ===== INPUT / SELECT ===== */
 .gm-input,
 .gm-select {
-    padding: 8px;
+    padding: 3px;
     background: #111;
     border: 1px solid #444;
     color: white;
@@ -306,3 +306,90 @@ nav button:hover { background: #777; }
     50% { transform: translateY(-3px); }
 }
 /*/////////////
+/* --- EQUIPMENT STYLES (MỚI) --- */
+.equip-slots-container {
+    display: flex;
+    justify-content: space-between;
+    margin: 15px 0;
+    gap: 10px;
+}
+
+.equip-slot {
+    flex: 1;
+    background: #222;
+    border: 1px dashed #555;
+    border-radius: 8px;
+    padding: 10px;
+    cursor: pointer;
+    text-align: center;
+    position: relative;
+    transition: 0.2s;
+}
+
+.equip-slot:hover { border-color: white; background: #333; }
+.equip-slot.active { border: 1px solid #00ff00; background: #1a331a; }
+
+.slot-icon { font-size: 24px; margin-bottom: 5px; }
+.slot-name { font-size: 11px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slot-name.SSR { color: gold; }
+.slot-name.SR { color: #3498db; }
+.slot-name.R { color: white; }
+.slot-stat { font-size: 10px; color: #aaa; }
+.slot-remove-btn { 
+    position: absolute; top: -5px; right: -5px; 
+    background: red; color: white; border: none; 
+    border-radius: 50%; width: 18px; height: 18px; 
+    font-size: 10px; cursor: pointer;
+}
+
+.equip-selection-list {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 6px;
+    height: 200px;
+    overflow-y: auto;
+    padding: 5px;
+}
+
+.equip-item-row {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    border-bottom: 1px solid #222;
+    cursor: pointer;
+}
+.equip-item-row:hover { background: #222; }
+.item-name.SSR { color: gold; }
+.item-stat { color: #00ff00; font-weight: bold; font-size: 12px; }
+.item-desc { font-size: 10px; color: #777; }
+
+/* --- GACHA TABS --- */
+.gacha-tabs { display: flex; justify-content: center; margin-bottom: 20px; gap: 10px; }
+.gacha-tab-btn {
+    padding: 10px 20px; background: #333; border: none; color: #aaa; cursor: pointer;
+    border-bottom: 3px solid transparent; font-weight: bold; font-size: 16px;
+}
+.gacha-tab-btn.active { color: gold; border-bottom-color: gold; }
+
+/* --- VIP EQUIPMENT VFX --- */
+/* Hiệu ứng thẻ SSR */
+.equip-card-ssr {
+    border: 2px solid gold !important;
+    box-shadow: 0 0 15px gold, inset 0 0 10px gold;
+    animation: equipPulse 1.5s infinite alternate;
+}
+@keyframes equipPulse {
+    from { box-shadow: 0 0 10px gold; }
+    to { box-shadow: 0 0 25px gold, 0 0 10px rgb(255, 100, 0); }
+}
+
+/* Hiệu ứng luồng sáng khi xuất hiện (Queue) */
+.vip-equip-ray {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(255,215,0,0.8) 0%, rgba(255,215,0,0) 70%);
+    animation: rotateRay 3s linear infinite;
+    z-index: -1; /* Nằm dưới thẻ */
+}
+
+@keyframes rotateRay { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); }}

@@ -1,14 +1,13 @@
 import { getState, advanceStage, updateGems } from './state.js';
 import { generateTowerEnemy } from './enemies.js';
+import { calculateHeroStats } from './equipment.js';
 // Tính tổng sức mạnh đội hình người chơi (Lấy 5 tướng mạnh nhất)
+// Tính tổng sức mạnh đội hình (Có tính trang bị)
 export function calculatePlayerPower() {
     const state = getState();
     const teamIds = state.team || [];
+    const teamHeroes = state.inventory.filter(h => teamIds.includes(Number(h.uid)));
 
-    // Lọc ra các tướng có UID nằm trong danh sách team
-    const teamHeroes = state.inventory.filter(h => teamIds.includes(h.uid));
-
-    // Nếu chưa chọn ai, cảnh báo
     if (teamHeroes.length === 0) {
         return { hp: 0, atk: 0, speed: 0, count: 0, error: true };
     }
@@ -18,9 +17,12 @@ export function calculatePlayerPower() {
     let avgSpeed = 0;
 
     teamHeroes.forEach(hero => {
-        totalHp += (hero.hp || 100);
-        totalAtk += (hero.atk || 10);
-        avgSpeed += (hero.speed || 10);
+        // MỚI: Dùng hàm tính chỉ số tổng hợp
+        const stats = calculateHeroStats(hero);
+        
+        totalHp += stats.hp;
+        totalAtk += stats.atk;
+        avgSpeed += stats.speed;
     });
 
     avgSpeed = Math.floor(avgSpeed / teamHeroes.length);
